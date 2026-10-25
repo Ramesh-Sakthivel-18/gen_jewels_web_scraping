@@ -1,0 +1,75 @@
+What We Have Done
+Built a Compound AI Vision Pipeline: We integrated OpenCV geometry mapping, SAM-2.1 for micro-segmentation and pair-clustering, and a 4-bit quantized Llama-3.2-11B Vision-Instruct model into a seamless, high-performance workflow.
+
+Implemented Dynamic Category Routing: The pipeline intelligently adapts based on the jewelry type—routing necklaces through a dual-zone architecture (Center + Side structures) while handling compact items like rings, earrings, bangles, and pendants via single-pass full-frame analysis.
+
+Designed Adaptive Material & Shape Prompts: We created multi-line structural prompt blueprints tied to a Material Lock mechanism that distinguishes solid metal pieces from gemstone-studded assets to eliminate hallucinations and prompt-echoing.
+
+Automated Batch Processing & Storage: The script scans your complete dataset directory structure, mirrors the brand and category hierarchy for saved SAM-2 visual segmentations (detection maps, context crops, and cutouts), and logs comprehensive records into a crash-resilient dataset CSV (llama3.2_sam_detailes_csv.csv).
+
+Why This Is Crucial
+Overcomes Visual Attention Dilution: Monolithic Vision-Language Models (VLMs) often lose microscopic details when forced to analyze an entire jewelry asset at once. Breaking down complex items into razor-tight, upscaled micro-crops allows the AI to inspect individual carvings, settings, and motifs with forensic clarity.
+
+Eliminates Manual Labor: It automates what would otherwise require thousands of hours of manual image cropping, sorting, and metadata writing across large commercial catalogs.
+
+Ensures Production-Grade Accuracy: By combining spatial pair-merging, visual deduplication, and strict material/anatomical rules, the system guarantees clean, consistent, and hallucination-free metadata ready for professional e-commerce platforms and high-end model training (such as SDXL).
+
+
+
+
+
+flow
+
+Phase 1: Initialization & Dataset Discovery
+Model Loading: Initializes Llama-3.2-11B-Vision-Instruct (4-bit NF4 quantized) and SAM-2.1-Hiera-Large natively on your GPU.
+
+Recursive Scanner: Scans your dataset directory for all image formats (.png, .jpg, .jpeg) while extracting the Brand Name and Category from the folder hierarchy.
+
+Auto-Resume Check: Reads the existing dataset CSV (llama3.2_sam_detailes_csv.csv) so that if the script stops or crashes, it automatically skips already processed images and resumes where it left off.
+
+Phase 2: Global Overview & Material Lock
+Background Isolation: Loads the image via OpenCV, converts it to grayscale, and thresholds the clean black background.
+
+Pass 1 (VLM Global Pass): Sends the full padded frame to Llama-3.2 Vision to analyze the overarching category, overall silhouette, and metal finish.
+
+Conditional Material Lock: Evaluates whether the asset is 100% Solid Metal or Gemstone + Metal.
+
+If Plain Metal: Dynamically strips out all gemstone, halo, and stone-cutting vocabulary from all subsequent prompts to prevent false-negative descriptive padding.
+
+Phase 3: Dynamic Shape Routing
+The pipeline uses the detected category to route the image into the optimal processing strategy:
+
+For Necklaces: Uses dual-zone OpenCV geometry (Distance Transform + morphological closing) to separate the piece into Focal Center and Side Structure.
+
+For Earrings: Inspects whether a symmetric pair is present; if two disconnected earrings are shown side-by-side, it isolates one complete earring to prevent data duplication.
+
+For Rings, Bangles, & Pendants: Bypasses side-arm searching and treats the asset as a single Compact Full-Anatomy target.
+
+Phase 4: SAM-2.1 Micro-Segmentation & Pair-Merging
+Dense Mask Generation: SAM-2.1 drops a dense grid of points across the macro crop to outline every fine element.
+
+Noise & Speck Filtering: Discards tiny dust specks, full-frame background blocks, and ultra-thin border slivers.
+
+Pair-Clustering: Identifies adjacent sub-components (such as twin flanking figures or side-by-side motifs) within a 155px threshold and merges their bounding envelopes into a single "Paired Unit" so surrounding context isn't lost.
+
+Visual & Spatial Deduplication: Applies a 380px minimum context window, a 140px center-distance filter, and an HSV color/edge histogram fingerprint (>0.965 similarity rejection) to ensure zero duplicate crops.
+
+Dataset-Mirrored Disk Saving: Automatically creates a mirrored folder structure (output_with_sam_dataset / Brand / Category / Product_Name) and saves:
+
+The annotated detection map (01_..._SAM_DETECTED_MAP.png)
+
+Context-padded crops (part_XX_context_1120x1120.png)
+
+Pure mask cutouts (part_XX_cutout_1120x1120.png)
+
+Phase 5: VLM Macro & Micro Captioning
+Macro Inspection (Pass 2): Feeds the structural macro zone(s) into Llama-3.2 Vision using category-specific anatomical prompts (e.g., inspecting the shank, gallery, and shoulders for rings; or studs, jhumka domes, and lower fringes for earrings).
+
+Micro Inspection (Pass 3): Iterates through each unique SAM-2 isolated micro-part, feeding the upscaled 1120x1120 context crops into the VLM to extract fine, localized details.
+
+Phase 6: Data Aggregation & Crash-Safe CSV Saving
+Record Compilation: Combines the Global Overview, Macro Reports, and all Micro-Details into a single comprehensive text body (Full_Raw_Output).
+
+CSV Logging: Appends the record (Image_Path, Brand_Name, Category, Full_Raw_Output) directly into llama3.2_sam_detailes_csv.csv using strict CSV quoting.
+
+VRAM Flush: Clears the CUDA cache and performs garbage collection (gc.collect()) to keep memory clean before moving to the next image in the dataset.
